@@ -20,8 +20,8 @@ playwright install
 ### 2 Set Up Environment Variables
 Create a .env file in the project directory and add:
 ```bash
-EMAIL=your-email@example.com
-PASSWORD=your-secure-password
+email="your-email@example.com"
+password="your-secure-password"
 ```
 ### 3 Run the Script
 Execute the Playwright automation script:
