@@ -29,3 +29,8 @@ Execute the Playwright automation script:
 python async_main.py
 ```
 Extracted data is stored in product.json
+
+
+Day 2
+The total count doesn't seem to get updated it is 1081 but there are more products loading beyond that, also earlier the reason why the seesion cookkes were not getting stored is beacuse we were using a chromium instance that doesn't launch a process from the existing chrome user states and hence no cookies were getting registred nor  restored, now I've implemnted using existing user instance with an account data which will 
+store the cookies existing in chrome
