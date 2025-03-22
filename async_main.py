@@ -5,43 +5,74 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
+USER_DATA_DIR = r"C:\Users\hozefa\AppData\Local\Google\Chrome\User Data" 
+
 async def check_session():
-    # Check if session storage exists.
+    """Check if session storage exists."""
+    return os.path.exists("session.json")
+
+async def load_session(context, page):
+    """Loads session from session.json (cookies & local storage)."""
     try:
-        with open("session.json", "r") as file:
-            return True
-    except FileNotFoundError:
-        return False
+        with open('session.json', "r") as file:
+            session_data = json.load(file)
+
+        await context.add_cookies(session_data["cookies"])  # Restore cookies
+        await page.goto("https://hiring.idenhq.com/instructions", wait_until="domcontentloaded")
+
+        # Restore local storage
+        await page.evaluate(f"""() => {{
+            const data = {session_data["local_storage"]};
+            for (const [key, value] of Object.entries(JSON.parse(data))) {{
+                localStorage.setItem(key, value);
+            }}
+        }}""")
+        print("Session restored successfully.")
+    except Exception as e:
+        print(f"Failed to restore session: {e}")
 
 async def login(page, context):
-    # Logs into the website and saves session.
+    """Logs into the website and saves session."""
     await page.goto("https://hiring.idenhq.com/")  
-
     await page.fill("input#email", os.getenv('email'))  
     await page.fill("input#password", os.getenv('password'))
     await page.click("button[type='submit']")
-    await page.wait_for_selector("text=Sign Out")  # Wait for login confirmation
-
-    # Save session state
-    await context.storage_state(path="session.json")
+    await page.wait_for_selector("text=Sign Out")  # Confirm successful login
+    await context.storage_state(path="session.json")  # Save session state
     print("Session saved.")
 
 async def scroll_and_load(page):
     """Scrolls down until all lazy-loaded content is loaded."""
-    
+    c=0
+    #getting displayed and total count
+    displayed_count = await page.locator("div.text-sm.text-muted-foreground span.font-medium.text-foreground:nth-of-type(1)").text_content()
+    total_count = await page.locator("div.text-sm.text-muted-foreground span.font-medium.text-foreground:nth-of-type(2)").text_content()
+    print(displayed_count,total_count)
     previous_height = None
     while True:
         # Get current page height
         
         height = await page.evaluate("document.body.scrollHeight")
-        
+        # if displayed_count == current_count:pr
+        #     continue
+        if displayed_count != total_count:
+            print(displayed_count,total_count)
+            previous_height = height
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            displayed_count = await page.locator("div.text-sm.text-muted-foreground span.font-medium.text-foreground:nth-of-type(1)").text_content()
+            continue
         if previous_height == height:
             break  # Stop if no new content loads
         
         
-        previous_height = height
-        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        await page.wait_for_timeout(2000) 
+        
+        
+        # previous_height = height
+        # await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        # displayed_count= page.locator("div.text-sm.text-muted-foreground span.font-medium.text-foreground:nth-of-type(1)").text_content()
+        c+=1
+        # await page.wait_for_timeout(1000) 
+        # current_count= page.locator("div.text-sm.text-muted-foreground span.font-medium.text-foreground:nth-of-type(1)").text_content()
         
 async def navigate_and_extract(page):
     """Navigates to the product table through menu options."""
@@ -86,23 +117,27 @@ async def save_data(data):
 async def main():
     """Main async function to run the Playwright automation."""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)  
-        context = await browser.new_context(storage_state="session.json" if await check_session() else None)
-        page = await context.new_page()
+        browser = await p.chromium.launch_persistent_context(
+            USER_DATA_DIR,
+            headless=False,
+            channel="chrome"  # Ensures it uses installed Chrome
+        )
 
-        await page.goto("https://hiring.idenhq.com/challenge")  # Replace with actual URL
+        page = browser.pages[0] if browser.pages else await browser.new_page()
+        await page.goto("https://hiring.idenhq.com/instructions")
 
-        if not await page.locator("text=Sign Out").is_visible():
+        if not await check_session():
             print("Session not found, logging in...")
-            await login(page, context)
+            await login(page, browser)
         else:
             print("Using existing session.")
-        # await page.goto("https://hiring.idenhq.com/challenge")
-        # await navigate_to_product_table(page)
-        # product_data = await extract_product_data(page)
-        product_data =await navigate_and_extract(page)
+            await load_session(browser, page)
+
+        product_data = await navigate_and_extract(page)
         await save_data(product_data)
 
+        print("Process completed. Press Enter to close.")
+        input()  # Keep the browser open
         await browser.close()
 
 # Run the script
